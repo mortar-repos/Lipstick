@@ -460,6 +460,13 @@
      * @param {String} counterName If record count is part of a multi-counter, the counter name (optional)
      */
     displayRecordCount: function(cls, recordCount, counterName) {
+        var recordCountFunc = function(elem) {
+            if((typeof recordCount) === 'function') {
+                return recordCount(elem);
+            } else {
+                return recordCount;
+            }
+        };
         if (counterName) {
             var counterStorageLocation = counterName.split('_').slice(2).join('_');
             // Loop through edges.
@@ -467,19 +474,23 @@
                 // Get storage location data for the edge.
                 edgeStorageLocationIn  = $(edge).attr('data-storagelocation-in');
                 edgeStorageLocationOut = $(edge).attr('data-storagelocation-out');
+                var count = recordCountFunc(edge);
                 if (counterStorageLocation === edgeStorageLocationIn) {
-                    $(edge).children('text').text(GraphView.addCommas(recordCount)).attr('data-record-count', recordCount);
+                    $(edge).children('text').text(GraphView.addCommas(count)).attr('data-record-count', count);
                 }
                 if (counterStorageLocation === edgeStorageLocationOut) {
-                    $(edge).children('text').text(GraphView.addCommas(recordCount)).attr('data-record-count', recordCount);
+                    $(edge).children('text').text(GraphView.addCommas(count)).attr('data-record-count', count);
                 }
             });
         }
         else {
-            $('g.edge.'+cls+' text').text(GraphView.addCommas(recordCount)).attr('data-record-count', recordCount);
+            _.each($('g.edge.'+cls), function(edge) {
+                var count = recordCountFunc(edge);
+                $(edge).find('text').text(GraphView.addCommas(count)).attr('data-record-count', count);
+            });
         }
         // If "-out" edge and has record count, display sample-output-icon.
-        if (cls.match(/-out/g) && typeof(recordCount) === "number") {
+        if (cls.match(/-out/g)) {
             var startScopeId = cls.replace('-out','');
             GraphView.displayObject('<i class="icon-info-sign sample-output-icon intermediate '+cls+'" data-start-scopeId="'+startScopeId+'"></i>',
                                     'g.edge.'+cls+'.intermediate text[data-record-count]',
@@ -541,11 +552,27 @@
                     });
                 }
                 else {
-                    count_out = (jobStats.counters['Map-Reduce Framework'].counters.hasOwnProperty('Reduce output records')) ? jobStats.counters['Map-Reduce Framework'].counters['Reduce output records'] : '';
-                    if (jobStats.totalReducers === 0) {
-                        count_out = jobStats['counters']['Map-Reduce Framework']['counters']['Map output records'];
-                    }
-                    GraphView.displayRecordCount(scopeId+'-out', count_out);
+                    GraphView.displayRecordCount(scopeId+'-out', function(elem) {
+                        var end_scopeid = $(elem).data('end-scopeid');
+                        var destJobStats = _.filter(GraphModel.options.runStatsData.jobStatusMap, function(jobStatus) {
+                            return jobStatus.scope == end_scopeid;
+                        });
+
+                        if(destJobStats.length != 0) {
+                            // If we know the map-reduce job the current map-reduce job is feeding into, return 
+                            // the map input records to destination map-reduce job instead. It tends to be more accurate
+                            // when dealing with complicated pig tasks such as sampling.
+                            return destJobStats[0]['counters']['Map-Reduce Framework']['counters']['Map output records'];
+                        } else {
+                            // Fallback functionality uses the reduce or map output records of the map-reduce
+                            // job in question.
+                            var count_out = (jobStats.counters['Map-Reduce Framework'].counters.hasOwnProperty('Reduce output records')) ? jobStats.counters['Map-Reduce Framework'].counters['Reduce output records'] : '';
+                            if (jobStats.totalReducers === 0) {
+                                count_out = jobStats['counters']['Map-Reduce Framework']['counters']['Map output records'];
+                            }
+                            return count_out;
+                        }
+                    });
                 }
             }
             // Update jobId's progress bars.
