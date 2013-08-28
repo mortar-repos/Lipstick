@@ -456,7 +456,7 @@
      * Display a record count on edges.
      *
      * @param {String} cls The element class for the edge
-     * @param {String} recordCount The record count to display
+     * @param {String || Function} recordCount The record count to display
      * @param {String} counterName If record count is part of a multi-counter, the counter name (optional)
      */
     displayRecordCount: function(cls, recordCount, counterName) {
