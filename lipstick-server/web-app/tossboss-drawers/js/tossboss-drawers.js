@@ -102,10 +102,10 @@
                 var newPageHeight = window.innerHeight
                                   - pageVerticalPadding
                                   - Drawer.options.navbarSize
-                                  - Drawer.options.handleSize;
+                                  - (Drawer.options.handleSize * (top + bottom));
                 var newPageWidth  = window.innerWidth
                                   - pageHorizontalPadding
-                                  - (Drawer.options.handleSize * 2);
+                                  - (Drawer.options.handleSize * (left + right));
                 if ($(Drawer.options.topDrawerSel).hasClass('toggled')) {
                     newPageHeight -= Drawer.options.containerSize;
                 }
