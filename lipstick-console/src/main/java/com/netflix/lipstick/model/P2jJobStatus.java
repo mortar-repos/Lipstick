@@ -32,6 +32,8 @@ import javax.persistence.OneToMany;
 public class P2jJobStatus {
 
     private Map<String, P2jCounters> counters;
+    private Map<String, P2jTaskStatus> mapTaskStatusMap;
+    private Map<String, P2jTaskStatus> reduceTaskStatusMap;
     private String scope;
     private String jobId;
     private String jobName;
@@ -69,6 +71,24 @@ public class P2jJobStatus {
 
     public void setCounters(Map<String, P2jCounters> counters) {
         this.counters = counters;
+    }
+
+    @OneToMany(cascade = CascadeType.ALL)
+    public Map<String, P2jTaskStatus> getReduceTaskStatusMap() {
+        return reduceTaskStatusMap;
+    }
+
+    public void setReduceTaskStatusMap(Map<String, P2jTaskStatus> reduceTaskStatusMap) {
+        this.reduceTaskStatusMap = reduceTaskStatusMap;
+    }
+
+    @OneToMany(cascade = CascadeType.ALL)
+    public Map<String, P2jTaskStatus> getMapTaskStatusMap() {
+        return mapTaskStatusMap;
+    }
+
+    public void setMapTaskStatusMap(Map<String, P2jTaskStatus> mapTaskStatusMap) {
+        this.mapTaskStatusMap = mapTaskStatusMap;
     }
 
     public String getJobId() {
