@@ -353,8 +353,13 @@ public class BasicP2LClient implements P2LClient {
             js.setReduceProgress(rj.reduceProgress());
             js.setTotalMappers(mapTaskReport.length);
             js.setTotalReducers(reduceTaskReport.length);
-            js.setMapTaskStatusMap(buildTaskStatusMap(mapTaskReport));
-            js.setReduceTaskStatusMap(buildTaskStatusMap(reduceTaskReport));
+            if (System.getProperty("collect_task_status_information", "false").equalsIgnoreCase("true")) {
+                LOG.info("Task Status Collection Enabled");
+                js.setMapTaskStatusMap(buildTaskStatusMap(mapTaskReport));
+                js.setReduceTaskStatusMap(buildTaskStatusMap(reduceTaskReport));
+            } else {
+                LOG.info("Task Status Collection Disabled");
+            }
             return js;
         } catch (IOException e) {
             LOG.error("Error getting job info.", e);
