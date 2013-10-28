@@ -9,6 +9,7 @@
         <class>com.netflix.lipstick.model.P2jCounters</class>
         <class>com.netflix.lipstick.model.P2jJobStatus</class>
         <class>com.netflix.lipstick.model.P2jTaskStatus</class>
+        <class>com.netflix.lipstick.model.P2jTaskAttemptStatus</class>
         <class>com.netflix.lipstick.model.P2jPlan</class>
         <class>com.netflix.lipstick.model.P2jPlanPackage</class>
         <class>com.netflix.lipstick.model.P2jPlanStatus</class>

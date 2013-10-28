@@ -88,4 +88,17 @@ public class BasicP2LClientTest {
         /* the client.savePlan() method should have been called */
         verify(status_client).savePlan(any(P2jPlanPackage.class));        
     }
+
+    @Test
+    public void testTaskAttemptIdToTaskId() throws Exception {
+        PigStatusClient status_client = mock(PigStatusClient.class);
+        BasicP2LClient client = new BasicP2LClient(status_client);
+
+        String observed_task_id = client.taskAttemptIdToTaskId("attempt_201310241542_0009_m_000586_0");
+        Assert.assertEquals("task_201310241542_0009_m_000586", observed_task_id);
+
+        observed_task_id = client.taskAttemptIdToTaskId("attempt_201310241542_0009_m_000586_16");
+        Assert.assertEquals("task_201310241542_0009_m_000586", observed_task_id);
+
+    }
 }

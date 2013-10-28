@@ -17,6 +17,7 @@ import javax.persistence.OneToMany;
 public class P2jTaskStatus {
 
     private Map<String, P2jCounters> counters;
+    private Map<String, P2jTaskAttemptStatus> taskAttemptStatusMap;
     private String taskId;
     private long finishTime;
     private long startTime;
@@ -48,6 +49,17 @@ public class P2jTaskStatus {
     public void setCounters(Map<String, P2jCounters> counters) {
         this.counters = counters;
     }
+
+
+    @OneToMany(cascade = CascadeType.ALL)
+    public Map<String, P2jTaskAttemptStatus> getTaskAttemptStatusMap() {
+        return taskAttemptStatusMap;
+    }
+
+    public void setTaskAttemptStatusMap(Map<String, P2jTaskAttemptStatus> taskAttemptStatusMap) {
+        this.taskAttemptStatusMap = taskAttemptStatusMap;
+    }
+
 
     public String getTaskId() {
         return taskId;

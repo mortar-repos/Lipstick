@@ -54,6 +54,7 @@ import com.netflix.lipstick.P2jPlanGenerator;
 import com.netflix.lipstick.model.P2jCounters;
 import com.netflix.lipstick.model.P2jJobStatus;
 import com.netflix.lipstick.model.P2jTaskStatus;
+import com.netflix.lipstick.model.P2jTaskAttemptStatus;
 import com.netflix.lipstick.model.P2jPlanPackage;
 import com.netflix.lipstick.model.P2jPlanStatus;
 import com.netflix.lipstick.model.P2jPlanStatus.StatusText;
@@ -64,6 +65,7 @@ import com.netflix.lipstick.pigstatus.RestfulPigStatusClient;
 import com.netflix.lipstick.util.OutputSampler;
 import com.netflix.lipstick.util.OutputSampler.SampleOutput;
 
+import org.apache.hadoop.mapred.TaskCompletionEvent;
 /**
  * A basic implementation of P2LClient.
  *
@@ -355,8 +357,10 @@ public class BasicP2LClient implements P2LClient {
             js.setTotalReducers(reduceTaskReport.length);
             if (System.getProperty("collect_task_status_information", "false").equalsIgnoreCase("true")) {
                 LOG.info("Task Status Collection Enabled");
-                js.setMapTaskStatusMap(buildTaskStatusMap(mapTaskReport));
-                js.setReduceTaskStatusMap(buildTaskStatusMap(reduceTaskReport));
+                
+                Map<String, Map<String, P2jTaskAttemptStatus>> completedAttempts = buildCompletedTaskAttemptsMap(rj);
+                js.setMapTaskStatusMap(buildTaskStatusMap(mapTaskReport, completedAttempts));
+                js.setReduceTaskStatusMap(buildTaskStatusMap(reduceTaskReport, completedAttempts));
             } else {
                 LOG.info("Task Status Collection Disabled");
             }
@@ -368,7 +372,8 @@ public class BasicP2LClient implements P2LClient {
         return null;
     }
 
-    public Map<String, P2jTaskStatus> buildTaskStatusMap(TaskReport[] taskReports) {
+    public Map<String, P2jTaskStatus> buildTaskStatusMap(TaskReport[] taskReports, 
+                                                         Map<String, Map<String, P2jTaskAttemptStatus>> completedAttempts) {
         Map<String, P2jTaskStatus> taskMap = Maps.newHashMap();
         for (int i = 0; i < taskReports.length; i++) {
             TaskReport task = taskReports[i];
@@ -381,9 +386,53 @@ public class BasicP2LClient implements P2LClient {
             taskStatus.setFinishTime(task.getFinishTime());
             taskStatus.setTaskId(taskId);
             taskStatus.setCounters(buildCountersMap(task.getCounters()));
+            taskStatus.setTaskAttemptStatusMap(completedAttempts.get(taskId));
             taskMap.put(taskId, taskStatus);
         }
         return taskMap;
+    }
+
+    /* 
+       Returns a Mapping of TaskId to another map. This other map contains
+       a mapping of TaskAttemptId to TaskCompletionEvent objects.
+
+       In theory I'd like the stats of *all* task events, completed or not but
+       the Hadoop api only exposes information on completed task attempts the
+       best I can tell.  And... this is pretty much why I drink.
+    */
+    public Map<String, Map<String, P2jTaskAttemptStatus>> buildCompletedTaskAttemptsMap(RunningJob rj) throws IOException {
+        Map<String, Map<String, P2jTaskAttemptStatus>> tceMap = Maps.newHashMap();
+        TaskCompletionEvent[] tceArray = rj.getTaskCompletionEvents(0);        
+        for (int i = 0; i < tceArray.length; i++) {
+            TaskCompletionEvent tce = tceArray[i];
+            String taskAttemptId = tce.getTaskAttemptId().toString();
+            String taskId = taskAttemptIdToTaskId(taskAttemptId);
+            if (!tceMap.containsKey(taskId)) {
+                Map<String, P2jTaskAttemptStatus> attemptMap = Maps.newHashMap();
+                tceMap.put(taskId, attemptMap);
+            }
+            P2jTaskAttemptStatus tas = new P2jTaskAttemptStatus();
+            tas.setTaskAttemptId(taskAttemptId);
+            tas.setRunTime(tce.getTaskRunTime());
+            tas.setStatus(tce.getTaskStatus().toString());
+            ((Map) tceMap.get(taskId)).put(taskAttemptId, tas);
+        }        
+        return tceMap;
+    }
+
+    /* That's right folks, the only way to TaskCompletionEvent (which represents
+       a completed TaskAttempt not a completed Task), is to do string manipulation
+       on the task attempt id to convert it to the task id. 
+
+       attempt_201310241542_0009_m_000586_0 -> task_201310241542_0009_m_000586
+    */
+    public String taskAttemptIdToTaskId(String taskAttemptId) {  
+        /* Chop off the task attempt number */
+        String taskId = taskAttemptId.substring(0, taskAttemptId.lastIndexOf('_'));
+        
+        /* chop off 'attempt' and replace with 'task' */
+        taskId = "task" + taskId.substring(7);
+        return taskId;
     }
 
     public Map<String, P2jCounters> buildCountersMap(Counters counters) {
