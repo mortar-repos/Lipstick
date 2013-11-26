@@ -16,6 +16,8 @@
 package com.netflix.lipstick.pigtolipstick;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
@@ -36,16 +38,18 @@ import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.TaskReport;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.pig.impl.PigContext;
+import org.apache.pig.ExecType;
 import org.apache.pig.LipstickPigServer;
 import org.apache.pig.backend.hadoop.executionengine.mapReduceLayer.MapReduceOper;
 import org.apache.pig.backend.hadoop.executionengine.mapReduceLayer.plans.MROperPlan;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.PhysicalOperator;
+import org.apache.pig.impl.PigContext;
 import org.apache.pig.newplan.Operator;
 import org.apache.pig.tools.pigstats.JobStats;
 import org.apache.pig.tools.pigstats.PigStats;
 import org.apache.pig.tools.pigstats.ScriptState;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Lists;
@@ -74,6 +78,7 @@ public class BasicP2LClient implements P2LClient {
     private static final Log LOG = LogFactory.getLog(BasicP2LClient.class);
 
     protected static final String JOB_NAME_PROP = "jobName";
+    protected static final String ENABLE_SAMPLE_OUTPUT_PROP = "lipstick.enable.sampleoutput";
 
     protected boolean planFailed = false;
     protected String planId;
@@ -82,9 +87,11 @@ public class BasicP2LClient implements P2LClient {
     protected LipstickPigServer ps;
     protected PigContext context;
     protected final Set<String> runningJobIds = Sets.newHashSet();
-    protected final Map<String, String> jobIdToScopeNameMap = Maps.newHashMap();
+    protected final Map<String, P2jJobStatus> jobIdToJobStatusMap = Maps.newHashMap();
 
     protected final PigStatusClient psClient;
+    protected boolean invalidClient = false;
+    protected boolean enableSampleOutput = true;
 
     /**
      * Instantiates a new BasicP2LClient using RestfulPigStatusClient with serviceUrl.
@@ -110,6 +117,7 @@ public class BasicP2LClient implements P2LClient {
         this.ps = ps;
     }
 
+    @Override
     public void setPigContext(PigContext context) {
         this.context = context;
     }
@@ -165,21 +173,39 @@ public class BasicP2LClient implements P2LClient {
                 } else {
                     plans.setJobName("unknown");
                 }
+
+                if(props.containsKey(ENABLE_SAMPLE_OUTPUT_PROP)) {
+                    String strProp = props.getProperty(ENABLE_SAMPLE_OUTPUT_PROP).toLowerCase();
+                    if(strProp.equals("f") || strProp.equals("false")) {
+                        enableSampleOutput = false;
+                        LOG.warn("Sample Output has been disabled.");
+                    }
+                }
+
                 plans.getStatus().setStartTime();
                 plans.getStatus().setStatusText(StatusText.running);
-                psClient.savePlan(plans);
-                
+                invalidClient = (psClient.savePlan(plans) == null);
 
             } catch (Exception e) {
                 LOG.error("Caught unexpected exception generating json plan.", e);
+                invalidClient = true;
             }
         } else {
             LOG.warn("Not saving plan, missing necessary objects to do so");
+            invalidClient = true;
+        }
+
+        if(invalidClient) {
+            LOG.error("Failed to properly create lipstick client and save plan.  Lipstick will be disabled.");
         }
     }
 
     @Override
     public void updateProgress(int progress) {
+        if(invalidClient) {
+            return;
+        }
+
         P2jPlanStatus planStatus = new P2jPlanStatus();
         planStatus.setProgress(progress);
 
@@ -193,6 +219,10 @@ public class BasicP2LClient implements P2LClient {
 
     @Override
     public void jobStarted(String jobId) {
+        if(invalidClient) {
+            return;
+        }
+
         PigStats.JobGraph jobGraph = PigStats.get().getJobGraph();
         LOG.debug("jobStartedNotification - jobId " + jobId + ", jobGraph:\n" + jobGraph);
 
@@ -202,14 +232,25 @@ public class BasicP2LClient implements P2LClient {
         for (JobStats jobStats : jobGraph) {
             if (jobId.equals(jobStats.getJobId())) {
                 LOG.info("jobStartedNotification - scope " + jobStats.getName() + " is jobId " + jobId);
-                jobIdToScopeNameMap.put(jobId, jobStats.getName());
+                P2jJobStatus jobStatus = new P2jJobStatus();
+                jobStatus.setJobId(jobId);
+                jobStatus.setStartTime(System.currentTimeMillis());
+                jobStatus.setScope(jobStats.getName());
+                jobIdToJobStatusMap.put(jobId, jobStatus);
                 runningJobIds.add(jobId);
             }
         }
+        P2jPlanStatus planStatus = new P2jPlanStatus();
+        updatePlanStatusForJobId(planStatus, jobId);
+        psClient.saveStatus(planId, planStatus);
     }
 
     @Override
     public void jobFinished(JobStats jobStats) {
+        if(invalidClient) {
+            return;
+        }
+
         // Remove jobId from runningSet b/c it's now complete
         String jobId = jobStats.getJobId();
         if (!runningJobIds.remove(jobId)) {
@@ -218,34 +259,51 @@ public class BasicP2LClient implements P2LClient {
 
         // Update the status of this job
         P2jPlanStatus planStatus = new P2jPlanStatus();
+        jobIdToJobStatusMap.get(jobId).setFinishTime(System.currentTimeMillis());
+        if (context.getExecType() == ExecType.LOCAL) {
+            jobIdToJobStatusMap.get(jobId).setMapProgress(1);
+            jobIdToJobStatusMap.get(jobId).setReduceProgress(1);
+        }
         updatePlanStatusForCompletedJobId(planStatus, jobId);
         psClient.saveStatus(planId, planStatus);
 
-        // Get sample output for the job
-        try {
-            P2jSampleOutputList sampleOutputList = new P2jSampleOutputList();
-            OutputSampler os = new OutputSampler(jobStats);
-            // The 10 & 1024 params (maxRows and maxBytes)
-            // should be configurable via properties
-            for (SampleOutput schemaOutputPair : os.getSampleOutputs(10, 1024)) {
-                P2jSampleOutput sampleOutput = new P2jSampleOutput();
-                sampleOutput.setSchemaString(schemaOutputPair.getSchema());
-                sampleOutput.setSampleOutput(schemaOutputPair.getOutput());
-                sampleOutputList.add(sampleOutput);
+        if(enableSampleOutput) {
+            // Get sample output for the job
+            try {
+                P2jSampleOutputList sampleOutputList = new P2jSampleOutputList();
+                OutputSampler os = new OutputSampler(jobStats);
+                // The 10 & 1024 params (maxRows and maxBytes)
+                // should be configurable via properties
+                for (SampleOutput schemaOutputPair : os.getSampleOutputs(10, 1024)) {
+                    P2jSampleOutput sampleOutput = new P2jSampleOutput();
+                    sampleOutput.setSchemaString(schemaOutputPair.getSchema());
+                    sampleOutput.setSampleOutput(schemaOutputPair.getOutput());
+                    sampleOutputList.add(sampleOutput);
+                }
+                psClient.saveSampleOutput(planId,
+                                          jobIdToJobStatusMap.get(jobStats.getJobId()).getScope(),
+                                          sampleOutputList);
+            } catch (Exception e) {
+                LOG.error("Unable to get sample output from job with id [" + jobStats.getJobId() + "]. ", e);
             }
-            psClient.saveSampleOutput(planId, jobIdToScopeNameMap.get(jobStats.getJobId()), sampleOutputList);
-        } catch (Exception e) {
-            LOG.error("Unable to get sample output from job with id [" + jobStats.getJobId() + "]. ", e);
         }
     }
 
     @Override
     public void jobFailed(JobStats jobStats) {
+        if(invalidClient) {
+            return;
+        }
+
         planFailed = true;
     }
 
     @Override
     public void planCompleted() {
+        if(invalidClient) {
+            return;
+        }
+
         if (planFailed) {
             planEndedWithStatusText(StatusText.failed);
         } else {
@@ -274,14 +332,13 @@ public class BasicP2LClient implements P2LClient {
     protected void updatePlanStatusForJobId(P2jPlanStatus planStatus, String jobId) {
         P2jJobStatus status = buildJobStatusMap(jobId);
         if (status != null) {
-            status.setScope(jobIdToScopeNameMap.get(jobId));
             planStatus.updateWith(status);
         }
     }
 
     protected void updatePlanStatusForCompletedJobId(P2jPlanStatus planStatus, String jobId) {
         LOG.info("Updating plan status for completed job " + jobId);
-        updatePlanStatusForJobId(planStatus, jobId);        
+        updatePlanStatusForJobId(planStatus, jobId);
         JobClient jobClient = PigStats.get().getJobClient();
         JobID jobID = JobID.forName(jobId);
         long startTime = Long.MAX_VALUE;
@@ -292,7 +349,7 @@ public class BasicP2LClient implements P2LClient {
 
            [1] - Which is really dumb.  The data obviously exists, it gets rendered
            in the job tracker via the JobInProgress but sadly this is internal
-           to the remote job tracker so we don't have access to this 
+           to the remote job tracker so we don't have access to this
            information. */
         try {
             List<TaskReport> reports = Lists.newArrayList();
@@ -302,25 +359,27 @@ public class BasicP2LClient implements P2LClient {
             reports.addAll(Arrays.asList(jobClient.getSetupTaskReports(jobID)));
             for(TaskReport rpt : reports) {
                 /* rpt.getStartTime() sometimes returns zero meaning it does
-                   not know what time it started so we need to prevent using 
+                   not know what time it started so we need to prevent using
                    this or we'll lose the actual lowest start time */
                 long taskStartTime = rpt.getStartTime();
                 if (0 != taskStartTime) {
                     startTime = Math.min(startTime, taskStartTime);
-                }                   
+                }
                 finishTime = Math.max(finishTime, rpt.getFinishTime());
             }
-            P2jJobStatus jobStatus = planStatus.getJob(jobId);
-            jobStatus.setStartTime(startTime);
-            jobStatus.setFinishTime(finishTime);
+            P2jJobStatus jobStatus = jobIdToJobStatusMap.get(jobId);
+            if (startTime < Long.MAX_VALUE) {
+                jobStatus.setStartTime(startTime);
+            }
+            if (finishTime > Long.MIN_VALUE) {
+                jobStatus.setFinishTime(finishTime);
+            }
             LOG.info("Determined start and finish times for job " + jobId);
         } catch (IOException e) {
             LOG.error("Error getting job info.", e);
         }
 
     }
-        
-
 
     /**
      * Build a P2jJobStatus object for the map/reduce job with id jobId.
@@ -331,20 +390,19 @@ public class BasicP2LClient implements P2LClient {
     @SuppressWarnings("deprecation")
     protected P2jJobStatus buildJobStatusMap(String jobId) {
         JobClient jobClient = PigStats.get().getJobClient();
-        P2jJobStatus js = new P2jJobStatus();
+        P2jJobStatus js = jobIdToJobStatusMap.get(jobId);
 
         try {
             RunningJob rj = jobClient.getJob(jobId);
             if (rj == null) {
                 LOG.warn("Couldn't find job status for jobId=" + jobId);
-                return null;
+                return js;
             }
 
             JobID jobID = rj.getID();
             js.setCounters(buildCountersMap(rj.getCounters()));
             TaskReport[] mapTaskReport = jobClient.getMapTaskReports(jobID);
             TaskReport[] reduceTaskReport = jobClient.getReduceTaskReports(jobID);
-            js.setJobId(jobId.toString());
             js.setJobName(rj.getJobName());
             js.setTrackingUrl(rj.getTrackingURL());
             js.setIsComplete(rj.isComplete());
