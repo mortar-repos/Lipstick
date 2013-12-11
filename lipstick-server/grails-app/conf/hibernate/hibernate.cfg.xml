@@ -29,6 +29,7 @@
 
 		<mapping class='com.netflix.lipstick.model.P2jCounters' />
 		<mapping class='com.netflix.lipstick.model.P2jJobStatus' />
+		<mapping class='com.netflix.lipstick.model.P2jTaskStatus' />
 		<mapping class='com.netflix.lipstick.model.P2jPlan' />
 		<mapping class='com.netflix.lipstick.model.P2jPlanPackage' />
 		<mapping class='com.netflix.lipstick.model.P2jPlanStatus' />
