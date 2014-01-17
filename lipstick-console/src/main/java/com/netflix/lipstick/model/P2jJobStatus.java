@@ -32,6 +32,7 @@ import javax.persistence.OneToMany;
 public class P2jJobStatus {
 
     private Map<String, P2jCounters> counters;
+    private Map<String, P2jWarning> warnings;
     private Map<String, P2jTaskStatus> mapTaskStatusMap;
     private Map<String, P2jTaskStatus> reduceTaskStatusMap;
     private String scope;
@@ -47,6 +48,9 @@ public class P2jJobStatus {
     private long id;
     private long startTime;
     private long finishTime;
+    private long recordsWritten;
+    private long bytesWritten;
+
 
     /**
      * Initialize an empty P2jJobStatus object.
@@ -71,6 +75,15 @@ public class P2jJobStatus {
 
     public void setCounters(Map<String, P2jCounters> counters) {
         this.counters = counters;
+    }
+
+    @OneToMany(cascade = CascadeType.ALL)
+    public Map<String, P2jWarning> getWarnings() {
+        return warnings;
+    }
+
+    public void setWarnings(Map<String, P2jWarning> warnings) {
+        this.warnings = warnings;
     }
 
     @OneToMany(cascade = CascadeType.ALL)
@@ -187,4 +200,19 @@ public class P2jJobStatus {
         this.finishTime = finishTime;
     }
 
+    public long getRecordsWritten() {
+        return recordsWritten;
+    }
+
+    public void setRecordsWritten(long recordsWritten) {
+        this.recordsWritten = recordsWritten;
+    }
+
+    public long getBytesWritten() {
+        return bytesWritten;
+    }
+
+    public void setBytesWritten(long bytesWritten) {
+        this.bytesWritten = bytesWritten;
+    }
 }
