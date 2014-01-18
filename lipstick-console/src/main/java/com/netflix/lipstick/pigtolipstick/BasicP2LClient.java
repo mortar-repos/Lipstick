@@ -268,7 +268,9 @@ public class BasicP2LClient implements P2LClient {
         }
         jobIdToJobStatusMap.get(jobId).setBytesWritten(jobStats.getBytesWritten());
         jobIdToJobStatusMap.get(jobId).setRecordsWritten(jobStats.getRecordWrittern());
-        jobIdToJobStatusMap.get(jobId).setWarnings(getCompletedJobWarnings(jobStats));
+
+        JobClient jobClient = PigStats.get().getJobClient();
+        jobIdToJobStatusMap.get(jobId).setWarnings(getCompletedJobWarnings(jobClient, jobStats));
 
         updatePlanStatusForCompletedJobId(planStatus, jobId);
         psClient.saveStatus(planId, planStatus);
@@ -462,8 +464,8 @@ public class BasicP2LClient implements P2LClient {
         return cMap;
     }
 
-    public Map<String, P2jWarning> getCompletedJobWarnings(JobStats jobStats) {
+    public Map<String, P2jWarning> getCompletedJobWarnings(JobClient jobClient, JobStats jobStats) {
         JobWarnings jw = new JobWarnings();
-        return jw.findCompletedJobWarnings(jobStats);
+        return jw.findCompletedJobWarnings(jobClient, jobStats);
     }
 }
