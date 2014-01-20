@@ -409,6 +409,8 @@ public class BasicP2LClient implements P2LClient {
 
             JobID jobID = rj.getID();
             js.setCounters(buildCountersMap(rj.getCounters()));
+            js.setWarnings(getRunningJobWarnings(jobClient, jobID));
+
             TaskReport[] mapTaskReport = jobClient.getMapTaskReports(jobID);
             TaskReport[] reduceTaskReport = jobClient.getReduceTaskReports(jobID);
             js.setJobName(rj.getJobName());
@@ -467,5 +469,10 @@ public class BasicP2LClient implements P2LClient {
     public Map<String, P2jWarning> getCompletedJobWarnings(JobClient jobClient, JobStats jobStats) {
         JobWarnings jw = new JobWarnings();
         return jw.findCompletedJobWarnings(jobClient, jobStats);
+    }
+
+    public Map<String, P2jWarning> getRunningJobWarnings(JobClient jobClient, JobID jobId) {
+        JobWarnings jw = new JobWarnings();
+        return jw.findRunningJobWarnings(jobClient, jobId.toString());
     }
 }
