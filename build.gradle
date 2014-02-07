@@ -120,36 +120,39 @@ project(':lipstick-console') {
         includeInJar
         pigInJar
         hadoopInJar
+
+        includeInJar.exclude group: 'org.apache.hadoop', module: 'hadoop-core'
+        includeInJar.exclude group: 'org.apache.pig', module: 'pig'
+        pigInJar.exclude group: 'org.apache.hadoop', module: 'hadoop-core'
+
     }
 
     dependencies {
-         includeInJar('dk.brics.automaton:automaton:1.11-8')
-         includeInJar('org.codehaus.jackson:jackson-mapper-asl:1.9.10')
-         includeInJar('com.google.guava:guava:12.0')
-         includeInJar('org.kohsuke:graphviz-api:1.1')
-         includeInJar('org.apache.commons:commons-io:1.3.2')
-         includeInJar('log4j:log4j:1.2.17')
-         includeInJar('joda-time:joda-time:1.6')
-         includeInJar('com.googlecode.jatl:jatl:0.2.2')
-         includeInJar('com.sun.jersey:jersey-client:1.8')
-         includeInJar('com.sun.jersey:jersey-core:1.8')
-         includeInJar('jline:jline:0.9.94')
-         includeInJar('org.antlr:antlr:3.4')
-         includeInJar('org.antlr:antlr-runtime:3.4')
-
-         pigInJar('org.apache.pig:pig:0.11.1') {
+         compile('dk.brics.automaton:automaton:1.11-8')
+         compile('org.codehaus.jackson:jackson-mapper-asl:1.9.10')
+         compile('com.google.guava:guava:12.0')
+         compile('org.kohsuke:graphviz-api:1.1')
+         compile('org.apache.commons:commons-io:1.3.2')
+         compile('log4j:log4j:1.2.17')
+         compile('joda-time:joda-time:1.6')
+         compile('com.googlecode.jatl:jatl:0.2.2')
+         compile('com.sun.jersey:jersey-client:1.8')
+         compile('com.sun.jersey:jersey-core:1.8')
+         compile('jline:jline:0.9.94')
+         compile('org.antlr:antlr:3.4')
+         compile('org.antlr:antlr-runtime:3.4')
+         compile('org.apache.pig:pig:0.11.1') {
                 exclude module: 'hsqld'
                 exclude module: 'jetty'
                 exclude module: 'jsp-api-2.1'
                 exclude module: 'servlet-api-2.5'
-        }
-
-        hadoopInJar( 'org.apache.hadoop:hadoop-core:' + (project.hasProperty('hadoopVersion') ? hadoopVersion : '1.1.0')) {
+         }
+         compile('org.apache.hadoop:hadoop-core:' + (project.hasProperty('hadoopVersion') ? hadoopVersion : '1.1.0'))  {
                 exclude module: 'hsqld'
                 exclude module: 'jetty'
                 exclude module: 'jsp-api-2.1'
                 exclude module: 'servlet-api-2.5'
-        }
+         }
 
         compile 'org.hibernate:hibernate-entitymanager:3.6.0.Final'
 
@@ -158,9 +161,12 @@ project(':lipstick-console') {
         testCompile 'org.mockito:mockito-core:1.9.5'
         testCompile 'org.powermock:powermock-api-mockito:1.5'
 
-        configurations.pigInJar.extendsFrom(configurations.includeInJar)
-        configurations.hadoopInJar.extendsFrom(configurations.pigInJar)
-        configurations.compile.extendsFrom(configurations.includeInJar, configurations.pigInJar, configurations.hadoopInJar)
+
+
+        configurations.includeInJar.extendsFrom(configurations.compile)
+        configurations.pigInJar.extendsFrom(configurations.compile)
+        configurations.hadoopInJar.extendsFrom(configurations.compile)
+        
     }
 
     test {
